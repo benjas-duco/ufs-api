@@ -1,6 +1,6 @@
 package cl.lowcost.ufs.Config;
 
-import cl.lowcost.ufs.Models.User;
+import cl.lowcost.ufs.Models.Roles;
 import cl.lowcost.ufs.Repos.UserRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -45,25 +45,34 @@ public class SecurityConfig {
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/", "/error").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/figures", "/api/figures/*").permitAll()
-                .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.GET, "/api/figures", "/api/figures/*", "/api/tags").permitAll()
+                // Solo ADMIN: manejar el catálogo y quitar compras de la cola
                 .requestMatchers(HttpMethod.POST, "/api/figures").hasRole("ADMIN")
                 .requestMatchers(HttpMethod.PUT, "/api/figures/*").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.DELETE, "/api/figures/*").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.DELETE, "/api/admin/purchases/*").hasRole("ADMIN")
+                // SHIPPER (y ADMIN): ver y despachar pedidos
+                .requestMatchers("/api/admin/**").hasRole("SHIPPER")
                 .anyRequest().authenticated())
-            .oauth2ResourceServer(oauth -> oauth.jwt(jwt -> jwt.jwtAuthenticationConverter(adminAwareConverter(users))));
+            .oauth2ResourceServer(oauth -> oauth.jwt(jwt -> jwt.jwtAuthenticationConverter(roleConverter(users))));
         return http.build();
     }
 
-    // El rol ADMIN sale de la columna "admin" de la tabla users, nunca del frontend.
-    private Converter<Jwt, AbstractAuthenticationToken> adminAwareConverter(UserRepository users) {
+    // El rol sale de la columna "role" de la tabla users, nunca del token ni del frontend.
+    // Cada rol incluye los permisos de los menores: ADMIN > SHIPPER > USER.
+    private Converter<Jwt, AbstractAuthenticationToken> roleConverter(UserRepository users) {
         return jwt -> {
             List<GrantedAuthority> authorities = new ArrayList<>();
             if (jwt.getSubject() != null) {
                 try {
                     UUID id = UUID.fromString(jwt.getSubject());
-                    if (users.findById(id).map(User::isAdmin).orElse(false)) {
-                        authorities.add(new SimpleGrantedAuthority("ROLE_ADMIN"));
-                    }
+                    users.findById(id).ifPresent(user -> {
+                        for (Roles r : Roles.values()) {
+                            if (user.getRole().atLeast(r)) {
+                                authorities.add(new SimpleGrantedAuthority("ROLE_" + r.name()));
+                            }
+                        }
+                    });
                 } catch (IllegalArgumentException ignored) {
                     // subject que no es UUID: queda sin roles
                 }

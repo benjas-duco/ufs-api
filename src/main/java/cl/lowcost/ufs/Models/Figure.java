@@ -6,8 +6,8 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.math.BigDecimal;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 @Entity
 @Table(name = "figures")
@@ -34,10 +34,12 @@ public class Figure {
     @Column(nullable = false)
     private States state;
 
-    @ElementCollection
-    @CollectionTable(name = "figure_tags", joinColumns = @JoinColumn(name = "figure_id"))
-    @Column(name = "tag")
-    private List<String> tags = new ArrayList<>();
+    // Las etiquetas viven en la tabla tags; si no existen, se crean al guardar la figura
+    @ManyToMany
+    @JoinTable(name = "figure_tag_links",
+            joinColumns = @JoinColumn(name = "figure_id"),
+            inverseJoinColumns = @JoinColumn(name = "tag_id"))
+    private Set<Tag> tags = new LinkedHashSet<>();
 
     // Stock disponible
     @Column(nullable = false)

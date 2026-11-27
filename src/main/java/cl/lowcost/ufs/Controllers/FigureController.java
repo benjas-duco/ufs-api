@@ -8,6 +8,8 @@ import cl.lowcost.ufs.Services.FigureService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -31,14 +33,15 @@ public class FigureController {
     @GetMapping
     public List<FigureResponse> list(@RequestParam(required = false) Brands brand,
                                      @RequestParam(required = false) States state,
-                                     @RequestParam(required = false) String q) {
-        return figureService.list(brand, state, q);
+                                     @RequestParam(required = false) String q,
+                                     Authentication auth) {
+        return figureService.list(brand, state, q, isAdmin(auth));
     }
 
-    // Público
+    // Público (las figuras DELETED solo las ve un admin)
     @GetMapping("/{id}")
-    public FigureResponse get(@PathVariable Integer id) {
-        return figureService.get(id);
+    public FigureResponse get(@PathVariable Integer id, Authentication auth) {
+        return figureService.get(id, isAdmin(auth));
     }
 
     // Solo admin
@@ -52,5 +55,17 @@ public class FigureController {
     @PutMapping("/{id}")
     public FigureResponse update(@PathVariable Integer id, @Valid @RequestBody FigureRequest req) {
         return figureService.update(id, req);
+    }
+
+    // Solo admin. No borra la fila: la pasa a DELETED.
+    @DeleteMapping("/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void delete(@PathVariable Integer id) {
+        figureService.delete(id);
+    }
+
+    private boolean isAdmin(Authentication auth) {
+        return auth != null && auth.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
     }
 }

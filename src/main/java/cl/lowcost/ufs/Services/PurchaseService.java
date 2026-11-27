@@ -152,6 +152,19 @@ public class PurchaseService {
         return PurchaseResponse.from(purchase);
     }
 
+    // Quita una compra de la cola de pedidos. Solo si todavía no se envió ningún ítem.
+    // Ojo: no devuelve el stock; si hace falta, se corrige editando la figura.
+    @Transactional
+    public void cancel(Integer purchaseId) {
+        Purchase purchase = purchases.findById(purchaseId)
+                .orElseThrow(() -> notFound("Compra no encontrada"));
+        if (purchase.getItems().stream().anyMatch(PurchaseItem::isSent)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "La compra ya tiene ítems enviados, no se puede quitar de la cola");
+        }
+        purchases.delete(purchase);
+    }
+
     private ShippingInfo toShipping(ShippingRequest r) {
         ShippingInfo s = new ShippingInfo();
         s.setRecipientName(r.recipientName().trim());

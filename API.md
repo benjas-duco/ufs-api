@@ -2,7 +2,7 @@
 
 Todas las rutas empiezan con `/api`. Las respuestas son JSON.
 
-## Autenticación
+## Autenticación y roles
 
 El login lo hace **Supabase Auth** desde la página. Para las rutas privadas, enviar el token que entrega Supabase:
 
@@ -10,18 +10,28 @@ El login lo hace **Supabase Auth** desde la página. Para las rutas privadas, en
 Authorization: Bearer <access_token>
 ```
 
-La API saca el id del usuario del token. La primera vez que un usuario llama a una ruta privada, se crea solo su fila en la tabla `users` (con su correo antes de la `@` como nickname).
-Para hacer admin a alguien: poner `admin = true` en su fila de la tabla `users` (desde el panel de Supabase).
+La API verifica que el token sea auténtico (firmado por Supabase) y que no esté vencido, saca de él el id del usuario y busca su **rol en la tabla `users`**. El rol nunca viene del frontend.
+La primera vez que un usuario llama a una ruta privada se crea solo su fila en `users` (rol `USER`, nickname = su correo antes de la `@`).
+
+Para cambiar el rol de alguien: editar la columna `role` de su fila en la tabla `users` (panel de Supabase). Aplica desde su siguiente petición.
+
+| Rol | Puede |
+|---|---|
+| `USER` | Comprar: carrito, compras propias |
+| `SHIPPER` | Todo lo de `USER` + ver y despachar pedidos |
+| `ADMIN` | Todo lo de `SHIPPER` + manejar figuras y quitar pedidos de la cola |
 
 ## Rutas
 
 | Método | Ruta | Quién | Qué hace |
 |---|---|---|---|
-| GET | `/api/figures` | público | Lista figuras. Filtros opcionales: `?brand=FIGMA&state=PRE_SALE&q=texto` |
+| GET | `/api/figures` | público | Lista figuras (sin las `DELETED`). Filtros opcionales: `?brand=FIGMA&state=PRE_SALE&q=texto` |
 | GET | `/api/figures/{id}` | público | Detalle de una figura |
-| POST | `/api/figures` | admin | Crea una figura |
-| PUT | `/api/figures/{id}` | admin | Edita una figura (se envía completa) |
-| GET | `/api/me` | logueado | Datos del usuario (`id`, `nickname`, `admin`) |
+| GET | `/api/tags` | público | Todos los tags que existen (lista de textos) |
+| POST | `/api/figures` | ADMIN | Crea una figura |
+| PUT | `/api/figures/{id}` | ADMIN | Edita una figura (se envía completa) |
+| DELETE | `/api/figures/{id}` | ADMIN | Quita una figura (la pasa a `DELETED`) |
+| GET | `/api/me` | logueado | Datos del usuario (`id`, `nickname`, `role`) |
 | PUT | `/api/me` | logueado | Cambia el nickname `{ "nickname": "..." }` |
 | GET | `/api/cart` | logueado | Carrito con subtotales y total |
 | POST | `/api/cart/items` | logueado | Agrega al carrito `{ "figureId": 1, "units": 2 }` (suma si ya estaba) |
@@ -31,9 +41,12 @@ Para hacer admin a alguien: poner `admin = true` en su fila de la tabla `users` 
 | POST | `/api/purchases` | logueado | **Compra todo el carrito** (el body son los datos de envío) |
 | GET | `/api/purchases` | logueado | Mis compras |
 | GET | `/api/purchases/{id}` | logueado | Una de mis compras |
-| GET | `/api/admin/purchases` | admin | Todas las compras. `?pending=true` solo las que tienen ítems por enviar, `?pending=false` solo las completas |
-| PATCH | `/api/admin/purchases/{purchaseId}/items/{figureId}/sent` | admin | Marca un ítem como enviado |
-| PATCH | `/api/admin/purchases/{purchaseId}/tracking` | admin | Guarda el código de seguimiento `{ "trackingCode": "..." }` |
+| GET | `/api/admin/purchases` | SHIPPER | Todas las compras. `?pending=true` solo las que tienen ítems por enviar, `?pending=false` solo las completas |
+| PATCH | `/api/admin/purchases/{purchaseId}/items/{figureId}/sent` | SHIPPER | Marca un ítem como enviado |
+| PATCH | `/api/admin/purchases/{purchaseId}/tracking` | SHIPPER | Guarda el código de seguimiento `{ "trackingCode": "..." }` |
+| DELETE | `/api/admin/purchases/{purchaseId}` | ADMIN | Quita una compra de la cola (solo si no tiene ítems enviados) |
+
+Cada rol incluye lo de los anteriores: un ADMIN también puede lo de SHIPPER y USER.
 
 ## Ejemplos de body
 
@@ -45,12 +58,14 @@ Figura (POST / PUT):
   "brand": "POPUP_PARADE",
   "price": 29990,
   "state": "AVAILABLE",
-  "tags": ["vocaloid", "miku"],
+  "tags": ["vocaloid", "Miku"],
   "units": 10,
   "imageUrl": "https://...",
   "description": "Texto largo"
 }
 ```
+
+Los tags se guardan en minúsculas. Los que todavía no existen se crean solos.
 
 Comprar (POST /api/purchases):
 
@@ -72,17 +87,19 @@ Comprar (POST /api/purchases):
 ## Valores permitidos
 
 - `brand`: `POPUP_PARADE`, `NENDROID`, `FIGMA`, `SCALE_FIGURE`
-- `state`: `AVAILABLE`, `UNAVAILABLE`, `ON_PRODUCTION`, `PRE_SALE`, `ON_SALE`
+- `state`: `AVAILABLE`, `UNAVAILABLE`, `ON_PRODUCTION`, `PRE_SALE`, `ON_SALE`, `DELETED`
+- `role`: `USER`, `SHIPPER`, `ADMIN`
 
 ## Reglas
 
-- Se puede agregar al carrito y comprar una figura en `AVAILABLE`, `ON_SALE` o `PRE_SALE`. `UNAVAILABLE` y `ON_PRODUCTION` no.
+- Se puede agregar al carrito y comprar una figura en `AVAILABLE`, `ON_SALE` o `PRE_SALE`. `UNAVAILABLE`, `ON_PRODUCTION` y `DELETED` no.
 - En `AVAILABLE` y `ON_SALE` la cantidad no puede superar el stock (`units`). En `PRE_SALE` no se revisa ni se descuenta stock.
 - Al comprar se descuenta el stock; si llega a 0, la figura pasa a `UNAVAILABLE`. El carrito queda vacío.
 - El total y los precios los calcula siempre el servidor. Cada ítem de la compra guarda el precio del momento (`unitPrice`).
 - Cada ítem de una compra tiene su propio `sent`. Una compra está `completed` cuando todos sus ítems están enviados.
 - Un ítem de una figura en `PRE_SALE` no se puede marcar como enviado hasta que la figura salga de preventa.
-- No hay ruta para borrar figuras: si una figura ya no se vende, pasarla a `UNAVAILABLE`.
+- Quitar una figura no borra la fila: la pasa a `DELETED`, desaparece del listado público y de los carritos. Un ADMIN puede verlas con `?state=DELETED`.
+- Quitar una compra de la cola no devuelve el stock; si hace falta, se corrige editando la figura.
 
 ## Errores
 
@@ -90,9 +107,9 @@ Formato: `{ "status": 409, "message": "Solo quedan 2 unidades de 'Hatsune Miku'"
 
 - 400: datos inválidos o carrito vacío
 - 401: falta el token o es inválido
-- 403: la ruta es solo para admin
+- 403: no tienes el rol necesario
 - 404: no existe
-- 409: no se puede por stock o estado de la figura
+- 409: no se puede por stock o estado
 
 ## Variables de entorno (Render)
 

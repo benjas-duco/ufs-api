@@ -16,7 +16,7 @@ public record FigureRequest(
         @NotNull Brands brand,
         @NotNull @Positive BigDecimal price,
         @NotNull States state,
-        List<String> tags,
+        List<@Size(max = 50) String> tags,
         @NotNull @Min(0) Integer units,
         @Size(max = 500) String imageUrl,
         String description) {

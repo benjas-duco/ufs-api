@@ -19,4 +19,8 @@ public interface CartItemRepository extends JpaRepository<CartItem, Integer> {
     @Modifying(flushAutomatically = true)
     @Query("delete from CartItem c where c.user.id = :userId")
     void deleteByUserId(@Param("userId") UUID userId);
+
+    @Modifying(flushAutomatically = true)
+    @Query("delete from CartItem c where c.figure.id = :figureId")
+    void deleteByFigureId(@Param("figureId") Integer figureId);
 }

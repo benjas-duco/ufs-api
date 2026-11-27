@@ -5,8 +5,8 @@ public enum States {
     UNAVAILABLE,
     ON_PRODUCTION,
     PRE_SALE,
-    DELETED,
-    ON_SALE;
+    ON_SALE,
+    DELETED;
 
     // Se puede agregar al carrito y comprar
     public boolean isPurchasable() {

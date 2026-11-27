@@ -2,6 +2,7 @@ package cl.lowcost.ufs.Services;
 
 import cl.lowcost.ufs.DTOs.NicknameRequest;
 import cl.lowcost.ufs.DTOs.UserResponse;
+import cl.lowcost.ufs.Models.Roles;
 import cl.lowcost.ufs.Models.User;
 import cl.lowcost.ufs.Repos.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -29,7 +30,7 @@ public class UserService {
             User user = new User();
             user.setId(id);
             user.setNickname(nickname);
-            user.setAdmin(false);
+            user.setRole(Roles.USER);
             return users.save(user);
         });
     }
